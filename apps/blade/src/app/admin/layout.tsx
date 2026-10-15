@@ -19,6 +19,8 @@ import {
   canAccessHackerAdmin,
   canAccessIssues,
   canAccessMemberAdmin,
+  canAccessPointStore,
+  canAccessPrintingQueue,
   canAccessProjectAdmin,
   canAccessRoleAdmin,
   getAdminNavigationAccess,
@@ -50,6 +52,8 @@ export default async function AdminLayout({
     !canAccessHackathonEvents(effectivePermissions) &&
     !canAccessIssues(effectivePermissions) &&
     !canAccessMemberAdmin(effectivePermissions) &&
+    !canAccessPointStore(effectivePermissions) &&
+    !canAccessPrintingQueue(effectivePermissions) &&
     !canAccessProjectAdmin(effectivePermissions) &&
     !canAccessRoleAdmin(effectivePermissions)
   ) {

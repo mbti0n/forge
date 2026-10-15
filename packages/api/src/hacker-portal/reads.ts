@@ -1,14 +1,17 @@
+import type { MapConfiguration } from "@forge/validators";
 import { and, asc, eq, isNull } from "@forge/db";
 import { db } from "@forge/db/client";
 import { User } from "@forge/db/schemas/auth";
 import {
   Event,
   HackathonClass,
+  HackathonMapConfiguration,
   HackerAttendee,
   HackerEventAttendee,
   HackerProfile,
   HackerProfileRevision,
 } from "@forge/db/schemas/knight-hacks";
+import { getHackerMapAccess } from "@forge/hacker-sdk";
 
 import type { HackerPortalContext } from "./trpc";
 import {
@@ -22,6 +25,7 @@ import {
   pointStoreItems,
   pointStoreSettings,
 } from "../utils/point-store/queries";
+import { getProfilePictureDownloadUrlForUser } from "../utils/profile-picture/storage";
 import {
   agreementAcceptanceDto,
   agreementDto,
@@ -36,7 +40,7 @@ import {
 } from "./data";
 import { portalFailure } from "./trpc";
 
-type AuthenticatedPortalContext = HackerPortalContext & {
+export type AuthenticatedPortalContext = HackerPortalContext & {
   client: NonNullable<HackerPortalContext["client"]>;
   session: NonNullable<HackerPortalContext["session"]>;
 };
@@ -66,13 +70,31 @@ export async function getPortalSession(ctx: HackerPortalContext) {
   if (!ctx.session) {
     return { authenticated: false, displayName: null, expiresAt: null };
   }
-  const [user] = await db
-    .select({ name: User.name })
-    .from(User)
-    .where(eq(User.id, ctx.session.userId))
-    .limit(1);
+  const [[user], profilePicture] = await Promise.all([
+    db
+      .select({
+        name: User.name,
+        image: User.image,
+        discordUserId: User.discordUserId,
+      })
+      .from(User)
+      .where(eq(User.id, ctx.session.userId))
+      .limit(1),
+    // Reuse Blade's owner-checked, signed photo URL. An unavailable photo
+    // must not prevent the participant from loading their session.
+    getProfilePictureDownloadUrlForUser(ctx.session.userId).catch(() => ({
+      url: null,
+    })),
+  ]);
   return {
     authenticated: true,
+    avatarUrl:
+      profilePicture.url ??
+      (user?.image
+        ? /^https:\/\//i.test(user.image)
+          ? user.image
+          : `https://cdn.discordapp.com/avatars/${encodeURIComponent(user.discordUserId)}/${encodeURIComponent(user.image)}.${user.image.startsWith("a_") ? "gif" : "png"}`
+        : null),
     displayName: user?.name ?? null,
     expiresAt: null,
   };
@@ -193,7 +215,7 @@ export async function getDashboard(ctx: AuthenticatedPortalContext) {
   };
 }
 
-async function requireApplicationWithStatuses(
+export async function requireApplicationWithStatuses(
   ctx: AuthenticatedPortalContext,
   statuses: readonly string[],
 ) {
@@ -213,8 +235,37 @@ async function requireApplicationWithStatuses(
   return application;
 }
 
+/** Enforce participant eligibility before reading the portal's configuration. */
+export async function getMapConfiguration(
+  ctx: AuthenticatedPortalContext,
+): Promise<MapConfiguration> {
+  const application = await requireApplicationWithStatuses(ctx, [
+    "confirmed",
+    "checkedin",
+  ]);
+  const hackathon = await requirePortalHackathon(ctx.session.hackathonId);
+  if (
+    getHackerMapAccess({
+      startsAt: hackathon.startDate,
+      status: application.status,
+      timeZone: hackathon.timezone,
+    }) !== "available"
+  ) {
+    portalFailure("FORBIDDEN", "The map opens on the first day of the event.", {
+      trpcCode: "FORBIDDEN",
+    });
+  }
+  const configuration = await db.query.HackathonMapConfiguration.findFirst({
+    where: eq(HackathonMapConfiguration.hackathonId, ctx.session.hackathonId),
+  });
+  return {
+    restrictionsEnabled: configuration?.restrictionsEnabled ?? false,
+    rooms: configuration?.rooms ?? [],
+  };
+}
+
 export async function getSchedule(ctx: AuthenticatedPortalContext) {
-  await requireApplicationWithStatuses(ctx, ["checkedin"]);
+  await requireApplicationWithStatuses(ctx, ["confirmed", "checkedin"]);
   const events = await db
     .select({
       description: Event.description,

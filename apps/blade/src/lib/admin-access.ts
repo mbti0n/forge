@@ -156,6 +156,14 @@ export function canAccessEmailPortal(permissions: EffectivePermissions) {
   return permissions.IS_OFFICER === true || permissions.EMAIL_PORTAL === true;
 }
 
+export function canAccessPrintingQueue(permissions: EffectivePermissions) {
+  return permissions.IS_OFFICER === true || permissions.PRINTING_QUEUE === true;
+}
+
+export function canAccessPointStore(permissions: EffectivePermissions) {
+  return permissions.HACKATHON_MERCH_STORE === true;
+}
+
 export function getAdminNavigationAccess(permissions: EffectivePermissions) {
   return {
     alumni: canAccessAlumniAdmin(permissions),
@@ -170,12 +178,13 @@ export function getAdminNavigationAccess(permissions: EffectivePermissions) {
     hackathonCheckIn: canAccessHackathonCheckIn(permissions),
     hackathonEvents: canAccessHackathonEvents(permissions),
     hackers: canAccessHackerAdmin(permissions),
-    pointStore: permissions.EDIT_HACKERS === true,
+    pointStore: canAccessPointStore(permissions),
     teams:
       permissions.READ_HACKERS === true || permissions.EDIT_HACKERS === true,
     issues: canAccessIssues(permissions),
     logs: canAccessAdminLogs(permissions),
     members: canAccessMemberAdmin(permissions),
+    printing: canAccessPrintingQueue(permissions),
     projectAdmin: canAccessProjectAdmin(permissions),
     judgeProjects: canAccessJudgeProjects(permissions),
     judging: canAccessProjectAdmin(permissions),

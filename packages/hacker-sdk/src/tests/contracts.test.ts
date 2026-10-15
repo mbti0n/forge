@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createHackerParticipantClient } from "../client";
 import {
@@ -53,6 +53,8 @@ describe("Hacker participant v1 contract", () => {
 
   it("exposes only the narrow participant procedure manifest", () => {
     expect(HACKER_PARTICIPANT_V1_PROCEDURES).toEqual({
+      updatePrintJobCategory: "mutation",
+      cancelPrintJob: "mutation",
       changeTeam: "mutation",
       claimProject: "mutation",
       confirmAttendance: "mutation",
@@ -68,12 +70,17 @@ describe("Hacker participant v1 contract", () => {
       getPublicHackathon: "query",
       getResume: "query",
       getSchedule: "query",
+      getMapConfiguration: "query",
       getSession: "query",
       getTeams: "query",
       inviteProjectMember: "mutation",
+      listPrintJobs: "query",
       removeResume: "mutation",
+      removeStagedPrintFile: "mutation",
+      reportIssue: "mutation",
       searchJudgingProjects: "query",
       submitApplication: "mutation",
+      submitPrintJob: "mutation",
       updateApplication: "mutation",
       updateParticipant: "mutation",
       updateProfile: "mutation",
@@ -120,6 +127,38 @@ describe("Hacker participant v1 contract", () => {
     });
 
     expect(client.resumeDownloadPath).toBe("/api/kh/resume/download");
+  });
+
+  it("[TC-NEG-004] rejects a bad print file before uploading it", async () => {
+    const requestFetch = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        Response.json({
+          fileId: "00000000-0000-4000-8000-000000000001",
+          fileName: "part.stl",
+          size: 10,
+        }),
+      ),
+    );
+    const client = createHackerParticipantClient({
+      adapterBasePath: "/api/kh",
+      fetch: requestFetch,
+      portalKey: "kh-x",
+    });
+
+    await expect(
+      client.uploadPrintFile(new Blob(["x"]), { fileName: "model.blend" }),
+    ).rejects.toMatchObject({ code: "INVALID_PRINT_FILE" });
+    expect(requestFetch).not.toHaveBeenCalled();
+
+    await expect(
+      client.uploadPrintFile(new Blob(["solid part"]), {
+        fileName: "part.stl",
+      }),
+    ).resolves.toMatchObject({ fileName: "part.stl" });
+    expect(requestFetch).toHaveBeenCalledWith(
+      "/api/kh/printing/upload",
+      expect.objectContaining({ method: "POST" }) as RequestInit,
+    );
   });
 
   it("returns the validated front-channel destination when signing out", async () => {

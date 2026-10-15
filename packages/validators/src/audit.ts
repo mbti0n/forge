@@ -496,7 +496,14 @@ export const AUDIT_ACTION_CATALOG = {
       "timezone",
       "eventAnnouncementChannelId",
       "generalHackerDiscordRoleId",
+      "issueReportsChannelId",
+      "issueReportsRoleId",
     ],
+  ),
+  "hackathon.map_configuration_updated": policy(
+    "hackathons",
+    "Updated map room access",
+    ["restrictionsEnabled", "roomCount"],
   ),
   "hackathon.deleted": policy("hackathons", "Deleted hackathon"),
   "project.inventory_imported": policy(
@@ -600,14 +607,14 @@ export const AUDIT_ACTION_CATALOG = {
     "groupId",
     "label",
     "isGeneral",
-    "isScheduled",
+    "judgingMode",
     "isMlhImportDefault",
   ]),
   "judging.group.updated": policy(
     "hackathons",
     "Updated judging group",
-    ["groupId", "label", "isGeneral", "isScheduled", "isMlhImportDefault"],
-    ["label", "isGeneral", "isScheduled", "isMlhImportDefault"],
+    ["groupId", "label", "isGeneral", "judgingMode", "isMlhImportDefault"],
+    ["label", "isGeneral", "judgingMode", "isMlhImportDefault"],
   ),
   "judging.group.deleted": policy("hackathons", "Deleted judging group", [
     "groupId",
@@ -616,8 +623,8 @@ export const AUDIT_ACTION_CATALOG = {
   "judging.challenge.updated": policy(
     "hackathons",
     "Updated judging challenge",
-    ["challengeId", "label", "parentId", "isScheduled"],
-    ["parentId", "isScheduled"],
+    ["challengeId", "label", "parentId", "judgingMode"],
+    ["parentId", "judgingMode"],
   ),
   "judging.room.created": policy("hackathons", "Created judging room", [
     "challengeId",
@@ -845,6 +852,55 @@ export const AUDIT_ACTION_CATALOG = {
   "hacker.resume_accessed": policy("hackathons", "Accessed hacker résumé", [
     "hadPrevious",
   ]),
+  "printing.job.submitted": policy("hackathons", "Submitted 3D print job", [
+    "fileCount",
+  ]),
+  "printing.job.category_updated": policy(
+    "hackathons",
+    "Updated 3D print job category",
+    [],
+    ["category"],
+  ),
+  "printing.job.cancelled": policy(
+    "hackathons",
+    "Cancelled 3D print job",
+    [],
+    ["status"],
+  ),
+  "printing.job.status_updated": policy(
+    "hackathons",
+    "Updated 3D print job status",
+    [],
+    ["status", "statusNote", "estimatedReadyAt"],
+  ),
+  "printing.job.estimate_updated": policy(
+    "hackathons",
+    "Updated 3D print job ready time",
+    [],
+    ["estimatedReadyAt"],
+  ),
+  "printing.file.downloaded": policy("hackathons", "Downloaded 3D print file", [
+    "fileId",
+    "fileName",
+  ]),
+  "printing.channel.updated": policy(
+    "hackathons",
+    "Updated 3D printing Discord channel",
+    [],
+    ["discordChannelId"],
+  ),
+  "printing.estimate_settings.updated": policy(
+    "hackathons",
+    "Updated 3D printing estimate settings",
+    [],
+    ["printMinutes", "printerCount"],
+  ),
+  "printing.availability.updated": policy(
+    "hackathons",
+    "Updated 3D printing availability",
+    [],
+    ["isOpen"],
+  ),
   "hacker.check_in_pass_issued": policy(
     "hackathons",
     "Issued hacker check-in pass",
@@ -1207,6 +1263,8 @@ export const AUDIT_TARGET_TYPES = [
   "judging_appointment",
   "member",
   "member_directory",
+  "print_job",
+  "printing_configuration",
   "provider",
   "project",
   "role",

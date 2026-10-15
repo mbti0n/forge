@@ -198,15 +198,13 @@ function EvaluationEditor({
 
   const activeProject = project;
   const now = useJudgingClock(editor.serverNow);
-  const [deadline] = useState(editor.deadlineAt);
   const expiryHandled = useRef(false);
+  const deadline = editor.deadlineAt;
   const seconds = deadline
     ? Math.max(0, Math.ceil((deadline.getTime() - now.getTime()) / 1000))
     : null;
   const expired = deadline !== null && seconds === 0;
-  const gapEnded = !deadline && editor.lockAt !== null && now >= editor.lockAt;
-  const editable =
-    editor.canEdit && workspace.state === "open" && !expired && !gapEnded;
+  const editable = editor.canEdit && workspace.state === "open" && !expired;
   const answers = useMemo(
     () => ({
       challengeId: workspace.challengeId,
@@ -238,20 +236,14 @@ function EvaluationEditor({
   const autosave = useEvaluationAutosave(answers, editor, editable);
   const utils = api.useUtils();
   useEffect(() => {
-    if ((!expired && !gapEnded) || expiryHandled.current) return;
+    if (!expired || expiryHandled.current) return;
     expiryHandled.current = true;
     void utils.judging.getEvaluationEditor
       .invalidate()
       .then(() => utils.judging.listMySubmissions.invalidate())
       .catch(() => undefined);
     router.refresh();
-    if (gapEnded) {
-      toast.message(
-        "Your room's next booking has started. Finish this submission during downtime.",
-      );
-      onOpenChange(false);
-    }
-  }, [expired, gapEnded, onOpenChange, router, utils]);
+  }, [expired, router, utils]);
   async function close(nextOpen: boolean) {
     if (!nextOpen && editable) {
       try {
@@ -364,13 +356,13 @@ function EvaluationEditor({
               </AlertTitle>
               <AlertDescription>
                 {editor.evaluationId
-                  ? "Return to the Submissions tab during room downtime to review or finish your answers."
+                  ? "Return to the Submissions tab anytime to review or finish your answers."
                   : "Checking the last saved answers. Keep this window open until the submission state is confirmed."}
               </AlertDescription>
             </Alert>
           ) : !editable && editor.reason ? (
             <Alert>
-              <AlertTitle>Wait until downtime</AlertTitle>
+              <AlertTitle>Editing unavailable</AlertTitle>
               <AlertDescription>{editor.reason}</AlertDescription>
             </Alert>
           ) : null}

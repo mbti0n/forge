@@ -15,13 +15,15 @@ import {
   ProjectChallenge,
   ProjectClaimLink,
   ProjectEvaluation,
-  ProjectEvaluationRating,
   ProjectEvaluationResponse,
   ProjectMember,
   ProjectToChallenge,
 } from "@forge/db/schemas/knight-hacks";
 
-import { appointmentStatus } from "../judging-schedule/appointments";
+import {
+  appointmentStatus,
+  evaluationsForAppointment,
+} from "../judging-schedule/appointments";
 import { reconcileExpiredJudgingDrafts } from "../judging-schedule/reconcile";
 import {
   claimMemberDto,
@@ -143,6 +145,7 @@ export async function hackerJudging(
         label: ProjectChallenge.label,
         parentId: ProjectChallenge.parentId,
         isScheduled: ProjectChallenge.isScheduled,
+        isRemote: ProjectChallenge.isRemote,
       })
       .from(ProjectToChallenge)
       .innerJoin(
@@ -183,6 +186,7 @@ export async function hackerJudging(
     db
       .select({
         id: ProjectEvaluation.id,
+        appointmentId: ProjectEvaluation.appointmentId,
         challengeId: ProjectEvaluation.challengeId,
         isComplete: ProjectEvaluation.isComplete,
         kind: Judge.kind,
@@ -205,26 +209,36 @@ export async function hackerJudging(
     challenges
       .filter((child) => child.parentId === challengeId)
       .map((child) => child.label);
-  output.appointments = appointments.map((appointment) => ({
-    id: appointment.id,
-    challengeId: appointment.challengeId,
-    challenge:
-      challenges.find((challenge) => challenge.id === appointment.challengeId)
-        ?.label ?? "Judging",
-    children: children(appointment.challengeId),
-    room: roomLabel(rooms.find((room) => room.id === appointment.roomId)),
-    startsAt: appointment.startsAt.toISOString(),
-    endsAt: appointment.endsAt.toISOString(),
-    status: appointmentStatus(
-      appointment,
-      evaluations.filter(
-        (evaluation) => evaluation.challengeId === appointment.challengeId,
+  const hackerVisibleChallengeIds = new Set(
+    challenges
+      .filter((challenge) => !challenge.parentId && !challenge.isRemote)
+      .map((challenge) => challenge.id),
+  );
+  output.appointments = appointments
+    .filter((appointment) =>
+      hackerVisibleChallengeIds.has(appointment.challengeId),
+    )
+    .map((appointment) => ({
+      id: appointment.id,
+      challengeId: appointment.challengeId,
+      challenge:
+        challenges.find((challenge) => challenge.id === appointment.challengeId)
+          ?.label ?? "Judging",
+      children: children(appointment.challengeId),
+      room: roomLabel(rooms.find((room) => room.id === appointment.roomId)),
+      startsAt: appointment.startsAt.toISOString(),
+      endsAt: appointment.endsAt.toISOString(),
+      status: appointmentStatus(
+        appointment,
+        evaluationsForAppointment(appointment, evaluations),
+        now,
       ),
-      now,
-    ),
-  }));
+    }));
   output.unscheduled = challenges
-    .filter((challenge) => !challenge.parentId && !challenge.isScheduled)
+    .filter(
+      (challenge) =>
+        !challenge.parentId && !challenge.isScheduled && !challenge.isRemote,
+    )
     .map((challenge) => ({
       challengeId: challenge.id,
       challenge: challenge.label,
@@ -244,42 +258,29 @@ export async function hackerJudging(
       );
   if (eligible.length) {
     const ids = eligible.map((evaluation) => evaluation.id);
-    const [ratings, responses] = await Promise.all([
-      db
-        .select({
-          evaluationId: ProjectEvaluationRating.evaluationId,
-          label: JudgingRubricItem.label,
-          value: ProjectEvaluationRating.value,
-        })
-        .from(ProjectEvaluationRating)
-        .innerJoin(
-          JudgingRubricItem,
-          eq(JudgingRubricItem.id, ProjectEvaluationRating.rubricItemId),
-        )
-        .where(inArray(ProjectEvaluationRating.evaluationId, ids))
-        .orderBy(asc(JudgingRubricItem.displayOrder)),
-      db
-        .select({
-          evaluationId: ProjectEvaluationResponse.evaluationId,
-          label: JudgingRubricItem.label,
-          value: ProjectEvaluationResponse.value,
-        })
-        .from(ProjectEvaluationResponse)
-        .innerJoin(
-          JudgingRubricItem,
-          eq(JudgingRubricItem.id, ProjectEvaluationResponse.rubricItemId),
-        )
-        .where(inArray(ProjectEvaluationResponse.evaluationId, ids))
-        .orderBy(asc(JudgingRubricItem.displayOrder)),
-    ]);
+    const responses = await db
+      .select({
+        evaluationId: ProjectEvaluationResponse.evaluationId,
+        label: JudgingRubricItem.label,
+        value: ProjectEvaluationResponse.value,
+      })
+      .from(ProjectEvaluationResponse)
+      .innerJoin(
+        JudgingRubricItem,
+        eq(JudgingRubricItem.id, ProjectEvaluationResponse.rubricItemId),
+      )
+      .where(
+        and(
+          inArray(ProjectEvaluationResponse.evaluationId, ids),
+          eq(ProjectEvaluationResponse.isPublic, true),
+        ),
+      )
+      .orderBy(asc(JudgingRubricItem.displayOrder));
     output.feedback = eligible.map((evaluation) => ({
       challengeId: evaluation.challengeId,
       challenge:
         challenges.find((challenge) => challenge.id === evaluation.challengeId)
           ?.label ?? "Judging",
-      ratings: ratings
-        .filter((rating) => rating.evaluationId === evaluation.id)
-        .map(({ label, value }) => ({ label, value })),
       responses: responses
         .filter((response) => response.evaluationId === evaluation.id)
         .map(({ label, value }) => ({ label, value })),

@@ -28,6 +28,26 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(mocks.search),
 }));
 
+vi.mock("@forge/ui/use-media-query", () => ({
+  useMediaQuery: () => true,
+}));
+
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    disconnect() {
+      return undefined;
+    }
+    observe() {
+      return undefined;
+    }
+    unobserve() {
+      return undefined;
+    }
+  },
+);
+Element.prototype.scrollIntoView = vi.fn();
+
 vi.mock("@yudiel/react-qr-scanner", () => ({
   Scanner: ({
     onScan,
@@ -99,6 +119,14 @@ vi.mock("~/trpc/react", () => ({
                 ready: true,
                 startDateTime: "2026-08-06T20:00:00.000Z",
               },
+              ...Array.from({ length: 60 }, (_, index) => ({
+                id: `00000000-0000-4000-8000-${String(300 + index).padStart(12, "0")}`,
+                name: `Workshop ${index + 1}`,
+                points: 10,
+                purpose: "event",
+                ready: true,
+                startDateTime: "2026-08-07T20:00:00.000Z",
+              })),
             ],
           },
           isPending: false,
@@ -162,6 +190,14 @@ async function select(name: string, value: string) {
   });
 }
 
+async function selectEvent(name: RegExp) {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("combobox", { name: "Event" }));
+    fireEvent.click(await screen.findByRole("option", { name }));
+    await Promise.resolve();
+  });
+}
+
 describe("HackathonCheckInWorkspace pending selection", () => {
   const hackathonId = "00000000-0000-4000-8000-000000000101";
   const eventId = "00000000-0000-4000-8000-000000000202";
@@ -171,14 +207,35 @@ describe("HackathonCheckInWorkspace pending selection", () => {
     </NavigationProvider>
   );
 
+  it.each(["", "Workshop"])(
+    "selects an event beyond the first twenty choices with search %j",
+    async (query) => {
+      render(workspace);
+      fireEvent.click(screen.getByRole("combobox", { name: "Event" }));
+      if (query) {
+        fireEvent.change(screen.getByPlaceholderText("Search events"), {
+          target: { value: query },
+        });
+      }
+      fireEvent.click(
+        await screen.findByRole("option", { name: /Workshop 60/ }),
+      );
+
+      expect(mocks.replace).toHaveBeenCalledWith(
+        expect.stringContaining("event=00000000-0000-4000-8000-000000000359"),
+        undefined,
+      );
+    },
+  );
+
   it("shows the event immediately and defers scans until that event commits", async () => {
     const response = holdNavigation();
     mocks.checkIn.mockResolvedValue({ outcome: "checked_in" });
     render(workspace);
     fireEvent.click(screen.getByRole("button", { name: "Open scanner" }));
-    await select("Event", eventId);
-    expect(screen.getByRole("combobox", { name: "Event" })).toHaveValue(
-      eventId,
+    await selectEvent(/Second check-in/);
+    expect(screen.getByRole("combobox", { name: "Event" })).toHaveTextContent(
+      "Second check-in",
     );
     expect(screen.getByRole("progressbar")).toBeVisible();
     act(() => mocks.onScan?.([{ rawValue: "user:pending-selection" }]));
@@ -190,8 +247,8 @@ describe("HackathonCheckInWorkspace pending selection", () => {
       await response.promise;
     });
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Event" })).toHaveValue(
-      eventId,
+    expect(screen.getByRole("combobox", { name: "Event" })).toHaveTextContent(
+      "Second check-in",
     );
     fireEvent.click(screen.getByRole("button", { name: "Open scanner" }));
     await act(async () => {
@@ -211,7 +268,9 @@ describe("HackathonCheckInWorkspace pending selection", () => {
     expect(screen.getByRole("combobox", { name: "Hackathon" })).toHaveValue(
       nextHackathon,
     );
-    expect(screen.getByRole("combobox", { name: "Event" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "Event" })).toHaveTextContent(
+      "Search events",
+    );
     expect(screen.getByRole("combobox", { name: "Event" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Open scanner" })).toBeDisabled();
     expect(mocks.replace).toHaveBeenCalledWith(
@@ -232,16 +291,16 @@ describe("HackathonCheckInWorkspace pending selection", () => {
   it("restores URL values after cancellation and subsequent history changes", async () => {
     const response = holdNavigation();
     const view = render(workspace);
-    await select("Event", eventId);
-    expect(screen.getByRole("combobox", { name: "Event" })).toHaveValue(
-      eventId,
+    await selectEvent(/Second check-in/);
+    expect(screen.getByRole("combobox", { name: "Event" })).toHaveTextContent(
+      "Second check-in",
     );
     await act(async () => {
       response.resolve();
       await response.promise;
     });
-    expect(screen.getByRole("combobox", { name: "Event" })).toHaveValue(
-      "00000000-0000-4000-8000-000000000201",
+    expect(screen.getByRole("combobox", { name: "Event" })).toHaveTextContent(
+      "Primary check-in",
     );
     mocks.search = `hackathon=${hackathonId}&event=${eventId}`;
     view.rerender(
@@ -249,8 +308,8 @@ describe("HackathonCheckInWorkspace pending selection", () => {
         <HackathonCheckInWorkspace />
       </NavigationProvider>,
     );
-    expect(screen.getByRole("combobox", { name: "Event" })).toHaveValue(
-      eventId,
+    expect(screen.getByRole("combobox", { name: "Event" })).toHaveTextContent(
+      "Second check-in",
     );
   });
 });

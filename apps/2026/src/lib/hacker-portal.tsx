@@ -19,16 +19,20 @@ import type {
   HackerApplicationStatus,
   HackerProfileDto,
   PublicHackathonDto,
+  SubmitPrintJobInput,
+  UpdatePrintJobCategoryInput,
 } from "@forge/hacker-sdk";
 import { WITHDRAWAL_ACKNOWLEDGEMENT } from "@forge/hacker-sdk";
 import {
   HackerSdkProvider,
+  useCancelPrintJob,
   useConfirmHackerAttendance,
   useHackerApplication,
   useHackerAttendance,
   useHackerDashboard,
   useHackerLeaderboard,
   useHackerPoints,
+  useHackerPrintJobs,
   useHackerResume,
   useHackerSchedule,
   useHackerSdkClient,
@@ -37,9 +41,13 @@ import {
   useIssueHackerCheckInPass,
   usePublicHackathon,
   useRemoveHackerResume,
+  useRemoveStagedPrintFile,
   useSubmitHackerApplication,
+  useSubmitPrintJob,
   useUpdateHackerParticipant,
+  useUpdatePrintJobCategory,
   useUploadHackerResume,
+  useUploadPrintFile,
   useWithdrawHackerApplication,
 } from "@forge/hacker-sdk/react";
 import { toast } from "@forge/ui/toast";
@@ -336,8 +344,34 @@ export function usePortalConfig() {
   return config;
 }
 
-export function PortalAuthBoundary({ children }: { children: ReactNode }) {
+export function PortalAuthBoundary({
+  children,
+  loadingFallback,
+}: {
+  children: ReactNode;
+  loadingFallback: ReactNode;
+}) {
   const pathname = usePathname();
+
+  return (
+    <AuthenticatedPortalBoundary
+      pathname={pathname}
+      loadingFallback={loadingFallback}
+    >
+      {children}
+    </AuthenticatedPortalBoundary>
+  );
+}
+
+function AuthenticatedPortalBoundary({
+  children,
+  loadingFallback,
+  pathname,
+}: {
+  children: ReactNode;
+  loadingFallback: ReactNode;
+  pathname: string;
+}) {
   const session = useHackerSession();
   const { client } = useHackerSdkClient();
 
@@ -371,13 +405,7 @@ export function PortalAuthBoundary({ children }: { children: ReactNode }) {
   }
 
   if (!session.data?.authenticated) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#07150f] px-4 text-white">
-        <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#d7ff76]">
-          Opening secure hacker sign-in…
-        </p>
-      </main>
-    );
+    return loadingFallback;
   }
 
   return children;
@@ -401,12 +429,17 @@ export function usePortalSignOut() {
 
 export function PortalSessionControl() {
   const pathname = usePathname();
+
+  if (pathname.startsWith("/dashboard")) return null;
+
+  return <AuthenticatedPortalSessionControl />;
+}
+
+function AuthenticatedPortalSessionControl() {
   const session = useHackerSession();
   const logout = usePortalSignOut();
 
-  if (pathname.startsWith("/dashboard") || !session.data?.authenticated) {
-    return null;
-  }
+  if (!session.data?.authenticated) return null;
 
   return (
     <aside
@@ -528,6 +561,26 @@ export function useHackerApplicationFlow({
   };
 }
 
+export function usePortalIssueReport() {
+  const { client } = useHackerSdkClient();
+  const pendingReport = useRef<{ description: string; key: string } | null>(
+    null,
+  );
+  return useMutation({
+    mutationFn: async (description: string) => {
+      if (pendingReport.current?.description !== description) {
+        pendingReport.current = { description, key: crypto.randomUUID() };
+      }
+      const result = await client.reportIssue({
+        description,
+        idempotencyKey: pendingReport.current.key,
+      });
+      pendingReport.current = null;
+      return result;
+    },
+  });
+}
+
 export function useHackerDashboardFlow(
   data: {
     attendance?: boolean;
@@ -568,18 +621,7 @@ export function useHackerDashboardFlow(
         idempotencyKey: checkInPassKey.acquire("issue"),
       });
       checkInPassKey.release();
-      return QRCode.toDataURL(pass.payload, { margin: 1, width: 320 });
-    },
-  });
-  const reportIssueMutation = useMutation({
-    mutationFn: async (_description: string) => {
-      await navigator.clipboard.writeText(_description).catch(() => undefined);
-      window.open(
-        config.copy.supportChannelUrl,
-        "_blank",
-        "noopener,noreferrer",
-      );
-      return { submitted: true as const };
+      return QRCode.toDataURL(pass.payload, { margin: 4, width: 640 });
     },
   });
   const application = dashboardQuery.data?.application ?? null;
@@ -640,8 +682,6 @@ export function useHackerDashboardFlow(
     pointsQuery,
     qrCode: qrMutation.data,
     qrMutation,
-    reportIssue: reportIssueMutation.mutateAsync,
-    reportIssueMutation,
     resumeUrl: dashboardQuery.data?.resume
       ? client.resumeDownloadPath
       : undefined,
@@ -666,7 +706,6 @@ export function useHackerDashboardFlow(
 }
 
 export function useHackerProfileFlow() {
-  const config = usePortalConfig();
   const dashboardQuery = useHackerDashboard();
   const applicationQuery = useHackerApplication();
   const updateParticipantMutation = useUpdateHackerParticipant();
@@ -699,16 +738,6 @@ export function useHackerProfileFlow() {
     participant,
     dashboardQuery,
     profileSchema: portalFormSchema,
-    reportIssue: async (_description: string) => {
-      await navigator.clipboard.writeText(_description).catch(() => undefined);
-      window.open(
-        config.copy.supportChannelUrl,
-        "_blank",
-        "noopener,noreferrer",
-      );
-      return { submitted: true as const };
-    },
-    reportIssueMutation: { isPending: false },
     removeResume: async () => {
       await removeResumeMutation.mutateAsync({
         idempotencyKey: removeResumeKey.acquire("remove"),
@@ -748,5 +777,102 @@ export function useHackerProfileFlow() {
       return client.resumeDownloadPath;
     },
     uploadMutation,
+  };
+}
+
+/** Resume actions reuse the SDK's upload validation and cache invalidation. */
+export function useHackerResumeFlow() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const clock = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(clock);
+  }, []);
+  const resumeQuery = useHackerResume();
+  const dashboardQuery = useHackerDashboard();
+  const hackathonQuery = usePublicHackathon();
+  const uploadMutation = useUploadHackerResume();
+  const resumeKey = useIdempotencyLease("dashboard-resume");
+  const { client } = useHackerSdkClient();
+  const status = dashboardQuery.data?.application?.status;
+  const endDate = hackathonQuery.data?.endDate;
+
+  return {
+    resumeQuery,
+    downloadUrl: client.resumeDownloadPath,
+    eligibilityLoading: dashboardQuery.isPending || hackathonQuery.isPending,
+    eligibilityError: dashboardQuery.isError || hackathonQuery.isError,
+    retryEligibility: () =>
+      Promise.all([dashboardQuery.refetch(), hackathonQuery.refetch()]),
+    editable: Boolean(
+      endDate &&
+      now < Date.parse(endDate) &&
+      status &&
+      ["pending", "waitlisted", "accepted", "confirmed", "checkedin"].includes(
+        status,
+      ),
+    ),
+    uploading: uploadMutation.isPending,
+    uploadResume: async (file: File) => {
+      const fingerprint = await resumeFingerprint(file);
+      await uploadMutation.mutateAsync({
+        file,
+        fileName: file.name,
+        idempotencyKey: resumeKey.acquire(fingerprint),
+      });
+      resumeKey.release();
+    },
+  };
+}
+
+/**
+ * 3D printing for a checked-in hacker. Submit and cancel each hold one
+ * idempotency key per payload, so a retried click cannot create a second job
+ * or cancel twice.
+ */
+export function useHackerPrintingFlow() {
+  const jobsQuery = useHackerPrintJobs();
+  const uploadMutation = useUploadPrintFile();
+  const removeMutation = useRemoveStagedPrintFile();
+  const submitMutation = useSubmitPrintJob();
+  const cancelMutation = useCancelPrintJob();
+  const categoryMutation = useUpdatePrintJobCategory();
+  const categoryKey = useIdempotencyLease("print-category");
+  const submitKey = useIdempotencyLease("print-submit");
+  const cancelKey = useIdempotencyLease("print-cancel");
+
+  return {
+    cancel: async (jobId: string) => {
+      const job = await cancelMutation.mutateAsync({
+        idempotencyKey: cancelKey.acquire({ jobId }),
+        jobId,
+      });
+      cancelKey.release();
+      return job;
+    },
+    cancelMutation,
+    categoryMutation,
+    updateCategory: async (
+      input: Omit<UpdatePrintJobCategoryInput, "idempotencyKey">,
+    ) => {
+      const job = await categoryMutation.mutateAsync({
+        ...input,
+        idempotencyKey: categoryKey.acquire(input),
+      });
+      categoryKey.release();
+      return job;
+    },
+    jobsQuery,
+    removeFile: (fileId: string) => removeMutation.mutateAsync({ fileId }),
+    submit: async (input: Omit<SubmitPrintJobInput, "idempotencyKey">) => {
+      const job = await submitMutation.mutateAsync({
+        ...input,
+        idempotencyKey: submitKey.acquire(input),
+      });
+      submitKey.release();
+      return job;
+    },
+    submitMutation,
+    uploadFile: (file: File) =>
+      uploadMutation.mutateAsync({ file, fileName: file.name }),
   };
 }

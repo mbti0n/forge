@@ -16,13 +16,16 @@ import type {
   HackerParticipantClientConfig,
 } from "./client";
 import type {
+  CancelPrintJobInput,
   ConfirmAttendanceInput,
   HackerLeaderboardScopeInput,
   IssueHackerCheckInPassInput,
   SubmitApplicationInput,
+  SubmitPrintJobInput,
   UpdateHackerApplicationInput,
   UpdateHackerParticipantInput,
   UpdateHackerProfileInput,
+  UpdatePrintJobCategoryInput,
   WithdrawApplicationInput,
 } from "./contracts";
 import { createHackerParticipantClient } from "./client";
@@ -57,6 +60,10 @@ export function hackerSdkRetryDelay(attemptIndex: number) {
 
 export function canLoadCheckedInParticipantData(status: string | undefined) {
   return status === "checkedin";
+}
+
+export function canLoadParticipantSchedule(status: string | undefined) {
+  return status === "confirmed" || status === "checkedin";
 }
 
 export async function invalidateHackerParticipantQueries(
@@ -159,13 +166,27 @@ export function useHackerResume(options: HackerSdkQueryOptions = {}) {
   });
 }
 
+/** Room policy is available before confirmation/check-in, just like the map. */
+export function useHackerMapConfiguration(options: HackerSdkQueryOptions = {}) {
+  const { client, portalKey } = useHackerSdkClient();
+  return useQuery({
+    enabled: options.enabled ?? true,
+    queryFn: () => client.getMapConfiguration(),
+    queryKey: [
+      ...hackerSdkQueryKeys.participant(portalKey),
+      "map-configuration",
+    ],
+    refetchInterval: 30_000,
+  });
+}
+
 export function useHackerSchedule(options: HackerSdkQueryOptions = {}) {
   const { client, portalKey } = useHackerSdkClient();
   const dashboard = useHackerDashboard();
   return useQuery({
     enabled:
       (options.enabled ?? true) &&
-      canLoadCheckedInParticipantData(dashboard.data?.application?.status),
+      canLoadParticipantSchedule(dashboard.data?.application?.status),
     queryFn: () => client.getSchedule(),
     queryKey: hackerSdkQueryKeys.schedule(portalKey),
   });
@@ -319,7 +340,7 @@ export function useHackerJudging(projectId?: string) {
     enabled: canLoadCheckedInParticipantData(
       dashboard.data?.application?.status,
     ),
-    refetchInterval: 120_000,
+    refetchInterval: 30_000,
     staleTime: 0,
     gcTime: 0,
   });
@@ -392,5 +413,63 @@ export function useChangeHackerTeam() {
   return useParticipantMutation(
     (input: import("./contracts").HackerParticipantInput<"changeTeam">) =>
       client.changeTeam(input),
+  );
+}
+
+export function useHackerPrintJobs(options: HackerSdkQueryOptions = {}) {
+  const { client, portalKey } = useHackerSdkClient();
+  const dashboard = useHackerDashboard();
+  return useQuery({
+    enabled:
+      (options.enabled ?? true) &&
+      canLoadCheckedInParticipantData(dashboard.data?.application?.status),
+    queryFn: () => client.listPrintJobs(),
+    queryKey: hackerSdkQueryKeys.printJobs(portalKey),
+    refetchInterval: 15_000,
+  });
+}
+
+/**
+ * Stages one file. Not retried: a retry would stage a second copy. Staging
+ * changes no query, so nothing is invalidated.
+ */
+export function useUploadPrintFile() {
+  const { client } = useHackerSdkClient();
+  return useMutation({
+    mutationFn: (input: { file: Blob; fileName: string }) =>
+      client.uploadPrintFile(input.file, input),
+    retry: false,
+  });
+}
+
+/** Drops a staged file the hacker removed from the form. */
+export function useRemoveStagedPrintFile() {
+  const { client } = useHackerSdkClient();
+  return useMutation({
+    mutationFn: (input: { fileId: string }) =>
+      client.removeStagedPrintFile(input),
+    retry: shouldRetryHackerSdkRequest,
+    retryDelay: hackerSdkRetryDelay,
+  });
+}
+
+export function useSubmitPrintJob() {
+  const { client } = useHackerSdkClient();
+  return useParticipantMutation((input: SubmitPrintJobInput) =>
+    client.submitPrintJob(input),
+  );
+}
+
+export function useUpdatePrintJobCategory() {
+  const { client } = useHackerSdkClient();
+  return useParticipantMutation((input: UpdatePrintJobCategoryInput) =>
+    client.updatePrintJobCategory(input),
+  );
+}
+
+export function useCancelPrintJob() {
+  const { client } = useHackerSdkClient();
+  return useParticipantMutation((input: CancelPrintJobInput) =>
+    client.cancelPrintJob(input),
   );
 }

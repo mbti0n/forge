@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { FORMS } from "@forge/consts";
+import { FORMS, PRINTING } from "@forge/consts";
 
 import { ianaTimeZoneSchema } from "./hackathons";
 import {
@@ -10,6 +10,11 @@ import {
   hackerTeamSearchSchema,
 } from "./hacker-teams";
 import { pointStoreCatalogDtoSchema } from "./point-store";
+import {
+  printJobCategorySchema,
+  printJobDescriptionSchema,
+  printJobStatusSchema,
+} from "./printing";
 import {
   hackerJudgingDtoSchema,
   hackerJudgingReadSchema,
@@ -23,6 +28,7 @@ import {
   projectInviteSchema,
 } from "./project-claims";
 import { nullableSocialProfileUrl } from "./social-profile";
+import { mapConfigurationSchema } from "./venue-map";
 
 export const HACKER_WITHDRAWAL_ACKNOWLEDGEMENT =
   "I understand that withdrawing is irreversible" as const;
@@ -304,6 +310,7 @@ export const publicHackathonDtoSchema = z
 export const portalSessionDtoSchema = z
   .object({
     authenticated: z.boolean(),
+    avatarUrl: z.string().url().nullable().optional(),
     displayName: z.string().nullable(),
     expiresAt: nullableIsoDateTimeSchema,
   })
@@ -412,6 +419,104 @@ export const checkInPassDtoSchema = z
   })
   .strict();
 
+export const hackerSubmitPrintJobSchema = z
+  .object({
+    category: printJobCategorySchema,
+    description: printJobDescriptionSchema,
+    fileIds: z
+      .array(z.string().uuid())
+      .min(1, "Attach at least one file.")
+      .max(PRINTING.MAX_PRINT_JOB_FILES)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "Each file can be attached once.",
+      }),
+    idempotencyKey: participantIdempotencyKeySchema,
+  })
+  .strict();
+
+export const hackerUpdatePrintJobCategorySchema = z
+  .object({
+    category: printJobCategorySchema,
+    jobId: z.string().uuid(),
+    idempotencyKey: participantIdempotencyKeySchema,
+  })
+  .strict();
+
+export const hackerCancelPrintJobSchema = z
+  .object({
+    idempotencyKey: participantIdempotencyKeySchema,
+    jobId: z.string().uuid(),
+  })
+  .strict();
+
+export const hackerRemoveStagedPrintFileSchema = z
+  .object({ fileId: z.string().uuid() })
+  .strict();
+
+export const stagedPrintFileDtoSchema = z
+  .object({
+    fileId: z.string().uuid(),
+    fileName: z.string(),
+    size: z.number().int().min(1),
+  })
+  .strict();
+
+export const removedStagedPrintFileDtoSchema = z
+  .object({ fileId: z.string().uuid() })
+  .strict();
+
+export const printJobDtoSchema = z
+  .object({
+    category: printJobCategorySchema.nullable().default(null),
+    createdAt: isoDateTimeSchema,
+    description: z.string(),
+    /** Null unless the job is received or printing. */
+    estimatedReadyAt: nullableIsoDateTimeSchema,
+    organizerReadyAt: nullableIsoDateTimeSchema.default(null),
+    files: z.array(
+      z
+        .object({
+          fileName: z.string(),
+          id: z.string().uuid(),
+          size: z.number().int().min(1),
+        })
+        .strict(),
+    ),
+    id: z.string().uuid(),
+    /** Place in the active queue, counting this job; null when not active. */
+    position: z.number().int().min(1).nullable(),
+    status: printJobStatusSchema,
+    statusChangedAt: isoDateTimeSchema,
+    statusNote: z.string().nullable(),
+  })
+  .strict();
+
+export const printJobsDtoSchema = z
+  .object({
+    jobs: z.array(printJobDtoSchema),
+    queue: z
+      .object({
+        isOpen: z.boolean().default(false),
+        /** Null means an older server has not supplied the breakdown yet. */
+        categoryCounts: z
+          .object({
+            project: z.number().int().min(0),
+            personal: z.number().int().min(0),
+            uncategorized: z.number().int().min(0),
+          })
+          .strict()
+          .nullable()
+          .default(null),
+        onHoldCount: z.number().int().min(0).nullable().default(null),
+        /** Minutes until a job submitted now would be ready. */
+        estimatedWaitMinutes: z.number().int().min(0),
+        printMinutes: z.number().int().min(1),
+        waitingCount: z.number().int().min(0),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const scheduleEventDtoSchema = z
   .object({
     description: z.string(),
@@ -500,7 +605,11 @@ export const participantDomainErrorSchema = z
       "FORBIDDEN",
       "FORBIDDEN_STATUS",
       "INVALID_AGREEMENT",
+      "INVALID_PRINT_FILE",
       "INVALID_RESUME",
+      "PRINT_FILE_UNAVAILABLE",
+      "PRINT_JOB_NOT_CANCELLABLE",
+      "PRINTING_CLOSED",
       "SESSION_EXPIRED",
       "STALE_PROFILE_REVISION",
       "UNAUTHENTICATED",
@@ -514,12 +623,27 @@ export const participantDomainErrorSchema = z
 
 const noInputSchema = z.undefined();
 
+export const hackerReportIssueSchema = z
+  .object({
+    description: z.string().trim().min(1).max(2000),
+    idempotencyKey: z.string().trim().min(1).max(128),
+  })
+  .strict();
+export const hackerIssueReportResultSchema = z
+  .object({
+    submitted: z.literal(true),
+  })
+  .strict();
+
 export const hackerPortalV1InputSchemas = {
+  reportIssue: hackerReportIssueSchema,
   searchJudgingProjects: projectClaimSearchSchema,
   inviteProjectMember: projectInviteSchema,
   claimProject: projectClaimSelectSchema,
   getProjectClaim: projectClaimTokenSchema,
   getJudging: hackerJudgingReadSchema,
+  updatePrintJobCategory: hackerUpdatePrintJobCategorySchema,
+  cancelPrintJob: hackerCancelPrintJobSchema,
   confirmAttendance: hackerConfirmAttendanceSchema,
   getApplicationContext: noInputSchema,
   getCheckInPass: hackerIssueCheckInPassSchema,
@@ -533,9 +657,13 @@ export const hackerPortalV1InputSchemas = {
   getPublicHackathon: noInputSchema,
   getResume: noInputSchema,
   getSchedule: noInputSchema,
+  getMapConfiguration: noInputSchema,
   getSession: noInputSchema,
+  listPrintJobs: noInputSchema,
   removeResume: hackerRemoveResumeSchema,
+  removeStagedPrintFile: hackerRemoveStagedPrintFileSchema,
   submitApplication: hackerApplicationSubmitSchema,
+  submitPrintJob: hackerSubmitPrintJobSchema,
   updateApplication: hackerApplicationUpdateSchema,
   updateParticipant: hackerParticipantUpdateSchema,
   updateProfile: hackerProfileUpdateSchema,
@@ -543,6 +671,7 @@ export const hackerPortalV1InputSchemas = {
 } as const;
 
 export interface HackerPortalV1OutputSchemaMap {
+  reportIssue: typeof hackerIssueReportResultSchema;
   getTeams: typeof hackerTeamsDtoSchema;
   changeTeam: typeof hackerTeamActionResultSchema;
   searchJudgingProjects: typeof projectClaimSearchDtoSchema;
@@ -550,6 +679,8 @@ export interface HackerPortalV1OutputSchemaMap {
   claimProject: typeof projectClaimResultDtoSchema;
   getProjectClaim: typeof projectClaimPreviewDtoSchema;
   getJudging: typeof hackerJudgingDtoSchema;
+  updatePrintJobCategory: typeof printJobDtoSchema;
+  cancelPrintJob: typeof printJobDtoSchema;
   confirmAttendance: typeof participantMutationResultDtoSchema;
   getApplicationContext: typeof applicationContextDtoSchema;
   getCheckInPass: typeof checkInPassDtoSchema;
@@ -561,9 +692,13 @@ export interface HackerPortalV1OutputSchemaMap {
   getPublicHackathon: typeof publicHackathonDtoSchema;
   getResume: z.ZodNullable<typeof resumeDtoSchema>;
   getSchedule: typeof scheduleDtoSchema;
+  getMapConfiguration: typeof mapConfigurationSchema;
   getSession: typeof portalSessionDtoSchema;
+  listPrintJobs: typeof printJobsDtoSchema;
   removeResume: typeof participantMutationResultDtoSchema;
+  removeStagedPrintFile: typeof removedStagedPrintFileDtoSchema;
   submitApplication: typeof participantMutationResultDtoSchema;
+  submitPrintJob: typeof printJobDtoSchema;
   updateApplication: typeof participantMutationResultDtoSchema;
   updateParticipant: typeof participantMutationResultDtoSchema;
   updateProfile: typeof participantMutationResultDtoSchema;
@@ -571,11 +706,14 @@ export interface HackerPortalV1OutputSchemaMap {
 }
 
 export const hackerPortalV1OutputSchemas: HackerPortalV1OutputSchemaMap = {
+  reportIssue: hackerIssueReportResultSchema,
   searchJudgingProjects: projectClaimSearchDtoSchema,
   inviteProjectMember: projectInviteResultDtoSchema,
   claimProject: projectClaimResultDtoSchema,
   getProjectClaim: projectClaimPreviewDtoSchema,
   getJudging: hackerJudgingDtoSchema,
+  updatePrintJobCategory: printJobDtoSchema,
+  cancelPrintJob: printJobDtoSchema,
   confirmAttendance: participantMutationResultDtoSchema,
   getApplicationContext: applicationContextDtoSchema,
   getCheckInPass: checkInPassDtoSchema,
@@ -589,9 +727,13 @@ export const hackerPortalV1OutputSchemas: HackerPortalV1OutputSchemaMap = {
   getPublicHackathon: publicHackathonDtoSchema,
   getResume: resumeDtoSchema.nullable(),
   getSchedule: scheduleDtoSchema,
+  getMapConfiguration: mapConfigurationSchema,
   getSession: portalSessionDtoSchema,
+  listPrintJobs: printJobsDtoSchema,
   removeResume: participantMutationResultDtoSchema,
+  removeStagedPrintFile: removedStagedPrintFileDtoSchema,
   submitApplication: participantMutationResultDtoSchema,
+  submitPrintJob: printJobDtoSchema,
   updateApplication: participantMutationResultDtoSchema,
   updateParticipant: participantMutationResultDtoSchema,
   updateProfile: participantMutationResultDtoSchema,

@@ -1,4 +1,4 @@
-export type EmailPortalTab = "compose" | "sends" | "templates";
+export type EmailPortalTab = "compose" | "sends" | "templates" | "queue";
 export type CampaignAudienceMode = "all" | "development_review" | "disabled";
 
 export interface EmailPortalTemplate {
@@ -23,6 +23,7 @@ export interface EmailPortalSend {
   finalRecipientCount?: number;
   id: string;
   nextRetryAt?: Date | string | null;
+  providerMayHaveStarted?: boolean;
   recipientCount?: number;
   safeError?: string | null;
   scheduledFor?: Date | string | null;
