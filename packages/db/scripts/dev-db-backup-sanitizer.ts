@@ -50,6 +50,7 @@ export const TABLES_TO_KEEP = [
   // back empty — the same failure `knight_hacks_discord_config` had.
   "knight_hacks_hackathon_class",
   "knight_hacks_hackathon_event_publication",
+  "knight_hacks_hackathon_map_configuration",
   "knight_hacks_hackathon_portal_client",
   "knight_hacks_hackathon_sponsor",
   "knight_hacks_hackathon_status_email",
@@ -150,6 +151,12 @@ export const TABLES_TO_DROP = [
   "knight_hacks_project_evaluation_revision",
   "knight_hacks_judge_deliberation_section",
   "knight_hacks_judge_deliberation_entry",
+  // 3D print requests describe real hackers' projects, and their files live in
+  // MinIO, which this data-only export does not copy. The configuration holds a
+  // production Discord channel ID.
+  "knight_hacks_print_job",
+  "knight_hacks_print_job_file",
+  "knight_hacks_printing_configuration",
 ] as const;
 
 /** Actual database tables that have no explicit development-backup policy. */

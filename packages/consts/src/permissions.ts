@@ -145,6 +145,16 @@ export const PERMISSION_DATA = {
     name: "Read Discord Archive",
     desc: "Grants access to Discord archive health and ingestion diagnostics.",
   },
+  PRINTING_QUEUE: {
+    idx: 28,
+    name: "Printing Queue",
+    desc: "Allows viewing and updating hacker 3D print jobs and choosing the printing Discord channel. Roles with this permission are pinged for new jobs.",
+  },
+  HACKATHON_MERCH_STORE: {
+    idx: 29,
+    name: "Hackathon Merch Store",
+    desc: "Allows managing the hackathon merch catalog and recording hacker purchases.",
+  },
 } as const satisfies Record<string, PermissionDataObj>;
 
 export const PERMISSIONS = Object.fromEntries(

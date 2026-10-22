@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
 
-import { and, asc, desc, eq, sql } from "@forge/db";
+import { and, asc, desc, eq, ilike, inArray, sql } from "@forge/db";
 import { db } from "@forge/db/client";
 import { Roles, User } from "@forge/db/schemas/auth";
 import {
@@ -17,7 +17,9 @@ import { getDefaultEmailProviderGateway } from "@forge/email";
 import {
   emailConfirmSendSchema,
   emailPreviewSendSchema,
+  emailRecoveryQueueSchema,
   emailResolveAudienceSchema,
+  emailRetryRecipientsSchema,
   emailSaveTemplateSchema,
   emailSendIdSchema,
   emailSendListSchema,
@@ -42,6 +44,10 @@ import {
 } from "../utils/email/delivery";
 import { canRetryEmailSend } from "../utils/email/lifecycle";
 import {
+  investigateEmailSend,
+  retryEmailRecipients,
+} from "../utils/email/recovery";
+import {
   compileDraft,
   DEFAULT_TEMPLATE_SAMPLE,
   findLatestRevision,
@@ -53,6 +59,68 @@ import {
 } from "../utils/email/templates";
 
 export const emailRouter = {
+  listRecoveryQueue: permProcedure
+    .input(emailRecoveryQueueSchema)
+    .query(async ({ ctx, input }) => {
+      requireEmailPortal(ctx);
+      const where = and(
+        inArray(EmailSend.status, [
+          "failed",
+          "queued",
+          "syncing",
+          "running",
+          "scheduled",
+        ]),
+        input.query
+          ? ilike(
+              EmailSend.subject,
+              `%${input.query.replace(/[\\%_]/g, "\\$&")}%`,
+            )
+          : undefined,
+      );
+      const [items, count] = await Promise.all([
+        db
+          .select({
+            id: EmailSend.id,
+            subject: EmailSend.subject,
+            createdAt: EmailSend.createdAt,
+            status: EmailSend.status,
+            finalRecipientCount: EmailSend.finalRecipientCount,
+            providerSentCount: EmailSend.providerSentCount,
+            providerBounceCount: EmailSend.providerBounceCount,
+            providerMayHaveStarted: EmailSend.providerMayHaveStarted,
+            safeError: EmailSend.safeError,
+            nextRetryAt: EmailSend.nextRetryAt,
+          })
+          .from(EmailSend)
+          .where(where)
+          .orderBy(desc(EmailSend.createdAt), desc(EmailSend.id))
+          .limit(input.limit)
+          .offset(input.offset),
+        db
+          .select({ total: sql<number>`count(*)::int` })
+          .from(EmailSend)
+          .where(where),
+      ]);
+      return { items, total: count[0]?.total ?? 0 };
+    }),
+
+  investigateSend: permProcedure
+    .input(emailSendIdSchema)
+    .mutation(async ({ ctx, input }) => {
+      requireEmailPortal(ctx);
+      // Refresh totals before tying recipient evidence to a campaign run.
+      await reconcileEmailSend(input.sendId);
+      return investigateEmailSend(input.sendId, ctx.session.user.id);
+    }),
+
+  retryRecipients: permProcedure
+    .input(emailRetryRecipientsSchema)
+    .mutation(async ({ ctx, input }) => {
+      requireEmailPortal(ctx);
+      return retryEmailRecipients(input, ctx.session.user);
+    }),
+
   archiveTemplate: permProcedure
     .input(emailTemplateIdSchema)
     .mutation(async ({ ctx, input }) => {
@@ -239,10 +307,7 @@ export const emailRouter = {
       if (!stored) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Send not found." });
       }
-      if (
-        stored.listmonkCampaignId &&
-        (stored.status === "running" || stored.status === "scheduled")
-      ) {
+      if (stored.listmonkCampaignId) {
         try {
           await reconcileEmailSend(stored.id);
         } catch {
@@ -370,7 +435,12 @@ export const emailRouter = {
       const reconcilable = sends.filter(
         (send) =>
           send.listmonkCampaignId &&
-          (send.status === "running" || send.status === "scheduled"),
+          (send.status === "running" ||
+            send.status === "scheduled" ||
+            send.status === "queued" ||
+            send.status === "failed" ||
+            (send.status === "completed" &&
+              send.providerSentCount !== send.finalRecipientCount)),
       );
       if (reconcilable.length === 0) return sends;
       await Promise.allSettled(

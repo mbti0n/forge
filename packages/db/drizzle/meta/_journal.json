@@ -407,6 +407,48 @@
       "when": 1790824936838,
       "tag": "0057_giant_risque",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1790905156682,
+      "tag": "0058_fresh_zombie",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1791209737617,
+      "tag": "0059_needy_menace",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1791228675901,
+      "tag": "0060_early_meteorite",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1791473519514,
+      "tag": "0061_tidy_the_hood",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1791632518358,
+      "tag": "0062_daily_arachne",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1791641041552,
+      "tag": "0063_first_jean_grey",
+      "breakpoints": true
     }
   ]
 }

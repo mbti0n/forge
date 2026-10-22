@@ -87,6 +87,15 @@ const WINDOW = {
 
 /** Every procedure the router exposes, with input its schema accepts. */
 const PROCEDURES: [string, (caller: Caller) => Promise<unknown>][] = [
+  [
+    "saveMapConfiguration",
+    (caller) =>
+      caller.saveMapConfiguration({
+        hackathonId: HACKATHON_ID,
+        restrictionsEnabled: true,
+        rooms: [],
+      }),
+  ],
   ["list", (caller) => caller.list()],
   ["get", (caller) => caller.get({ id: HACKATHON_ID })],
   ["create", (caller) => caller.create(WINDOW)],
@@ -166,6 +175,15 @@ const PROCEDURES: [string, (caller: Caller) => Promise<unknown>][] = [
       }),
   ],
   ["removeClass", (caller) => caller.removeClass({ id: CLASS_ID })],
+  [
+    "updateIssueReporting",
+    (caller) =>
+      caller.updateIssueReporting({
+        hackathonId: HACKATHON_ID,
+        issueReportsChannelId: "234567890123456789",
+        issueReportsRoleId: null,
+      }),
+  ],
 ];
 
 describe("hackathon configuration access policy", () => {

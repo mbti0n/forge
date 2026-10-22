@@ -11,6 +11,7 @@ import type {
   hackerApplicationDtoSchema,
   hackerApplicationSubmitSchema,
   hackerApplicationUpdateSchema,
+  hackerCancelPrintJobSchema,
   hackerConfirmAttendanceSchema,
   hackerIssueCheckInPassSchema,
   hackerLeaderboardInputSchema,
@@ -19,14 +20,20 @@ import type {
   hackerProfileFieldsSchema,
   hackerProfileUpdateSchema,
   hackerRemoveResumeSchema,
+  hackerRemoveStagedPrintFileSchema,
+  hackerSubmitPrintJobSchema,
+  hackerUpdatePrintJobCategorySchema,
   hackerWithdrawApplicationSchema,
   leaderboardDtoSchema,
   participantMutationResultDtoSchema,
   pointsDtoSchema,
   portalSessionDtoSchema,
+  printJobDtoSchema,
+  printJobsDtoSchema,
   publicHackathonDtoSchema,
   resumeDtoSchema,
   scheduleDtoSchema,
+  stagedPrintFileDtoSchema,
 } from "@forge/validators";
 import {
   hackerPortalV1InputSchemas,
@@ -87,6 +94,19 @@ export type IssueHackerCheckInPassInput = z.input<
 export type HackerLeaderboardDto = z.output<typeof leaderboardDtoSchema>;
 export type HackerResumeDto = z.output<typeof resumeDtoSchema>;
 export type RemoveHackerResumeInput = z.input<typeof hackerRemoveResumeSchema>;
+export type HackerPrintJobDto = z.output<typeof printJobDtoSchema>;
+export type HackerPrintJobsDto = z.output<typeof printJobsDtoSchema>;
+export type HackerStagedPrintFileDto = z.output<
+  typeof stagedPrintFileDtoSchema
+>;
+export type SubmitPrintJobInput = z.input<typeof hackerSubmitPrintJobSchema>;
+export type UpdatePrintJobCategoryInput = z.input<
+  typeof hackerUpdatePrintJobCategorySchema
+>;
+export type CancelPrintJobInput = z.input<typeof hackerCancelPrintJobSchema>;
+export type RemoveStagedPrintFileInput = z.input<
+  typeof hackerRemoveStagedPrintFileSchema
+>;
 
 type InputSchemaMap = typeof hackerPortalV1InputSchemas;
 type OutputSchemaMap = typeof hackerPortalV1OutputSchemas;
@@ -111,11 +131,14 @@ export type HackerParticipantV1Contract = {
 };
 
 export const HACKER_PARTICIPANT_V1_PROCEDURES = {
+  reportIssue: "mutation",
   getJudging: "query",
   getProjectClaim: "query",
   claimProject: "mutation",
   inviteProjectMember: "mutation",
   searchJudgingProjects: "query",
+  updatePrintJobCategory: "mutation",
+  cancelPrintJob: "mutation",
   confirmAttendance: "mutation",
   getApplicationContext: "query",
   getCheckInPass: "mutation",
@@ -129,9 +152,13 @@ export const HACKER_PARTICIPANT_V1_PROCEDURES = {
   getPublicHackathon: "query",
   getResume: "query",
   getSchedule: "query",
+  getMapConfiguration: "query",
   getSession: "query",
+  listPrintJobs: "query",
   removeResume: "mutation",
+  removeStagedPrintFile: "mutation",
   submitApplication: "mutation",
+  submitPrintJob: "mutation",
   updateApplication: "mutation",
   updateParticipant: "mutation",
   updateProfile: "mutation",
@@ -146,5 +173,8 @@ export const HACKER_PARTICIPANT_V1_SCHEMAS: {
   input: hackerPortalV1InputSchemas,
   output: hackerPortalV1OutputSchemas,
 } as const;
+
+export type HackerMapConfigurationDto =
+  HackerParticipantOutput<"getMapConfiguration">;
 
 export type HackerJudgingDto = HackerParticipantOutput<"getJudging">;

@@ -25,9 +25,17 @@ import {
   withdrawApplication,
 } from "./mutations";
 import {
+  cancelPrintJob,
+  listPrintJobs,
+  removeStagedPrintFile,
+  submitPrintJob,
+  updatePrintJobCategory,
+} from "./printing";
+import {
   getApplicationContext,
   getDashboard,
   getLeaderboard,
+  getMapConfiguration,
   getMyAttendance,
   getMyPoints,
   getPointStore,
@@ -35,6 +43,7 @@ import {
   getPublicHackathon,
   getSchedule,
 } from "./reads";
+import { reportIssue } from "./reports";
 import { getResume, removeResume } from "./resume";
 import {
   createHackerPortalRouter,
@@ -67,6 +76,10 @@ async function judgingRequest<T>(request: () => Promise<T>): Promise<T> {
 export const hackerParticipantV1Router: ReturnType<
   typeof createHackerPortalRouter
 > = createHackerPortalRouter({
+  reportIssue: participantProcedure
+    .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.reportIssue)
+    .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.reportIssue)
+    .mutation(({ ctx, input }) => reportIssue(ctx, input)),
   getTeams: participantProcedure
     .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.getTeams)
     .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.getTeams)
@@ -139,6 +152,14 @@ export const hackerParticipantV1Router: ReturnType<
         ),
       ),
     ),
+  updatePrintJobCategory: participantProcedure
+    .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.updatePrintJobCategory)
+    .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.updatePrintJobCategory)
+    .mutation(({ ctx, input }) => updatePrintJobCategory(ctx, input)),
+  cancelPrintJob: participantProcedure
+    .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.cancelPrintJob)
+    .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.cancelPrintJob)
+    .mutation(({ ctx, input }) => cancelPrintJob(ctx, input)),
   confirmAttendance: participantProcedure
     .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.confirmAttendance)
     .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.confirmAttendance)
@@ -179,6 +200,10 @@ export const hackerParticipantV1Router: ReturnType<
     .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.getResume)
     .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.getResume)
     .query(({ ctx }) => getResume(ctx)),
+  getMapConfiguration: participantProcedure
+    .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.getMapConfiguration)
+    .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.getMapConfiguration)
+    .query(({ ctx }) => getMapConfiguration(ctx)),
   getSchedule: participantProcedure
     .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.getSchedule)
     .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.getSchedule)
@@ -187,14 +212,26 @@ export const hackerParticipantV1Router: ReturnType<
     .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.getSession)
     .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.getSession)
     .query(({ ctx }) => getPortalSession(ctx)),
+  listPrintJobs: participantProcedure
+    .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.listPrintJobs)
+    .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.listPrintJobs)
+    .query(({ ctx }) => listPrintJobs(ctx)),
   removeResume: participantProcedure
     .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.removeResume)
     .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.removeResume)
     .mutation(({ ctx, input }) => removeResume(ctx, input)),
+  removeStagedPrintFile: participantProcedure
+    .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.removeStagedPrintFile)
+    .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.removeStagedPrintFile)
+    .mutation(({ ctx, input }) => removeStagedPrintFile(ctx, input)),
   submitApplication: participantProcedure
     .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.submitApplication)
     .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.submitApplication)
     .mutation(({ ctx, input }) => submitApplication(ctx, input)),
+  submitPrintJob: participantProcedure
+    .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.submitPrintJob)
+    .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.submitPrintJob)
+    .mutation(({ ctx, input }) => submitPrintJob(ctx, input)),
   updateApplication: participantProcedure
     .input(HACKER_PARTICIPANT_V1_SCHEMAS.input.updateApplication)
     .output(HACKER_PARTICIPANT_V1_SCHEMAS.output.updateApplication)

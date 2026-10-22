@@ -35,6 +35,7 @@ export const AUDITED_ADMIN_PROCEDURES = [
   "email.duplicateTemplate",
   "email.previewSend",
   "email.publishTemplate",
+  "email.retryRecipients",
   "email.retrySend",
   "email.saveTemplateDraft",
   "email.sendTest",
@@ -75,8 +76,10 @@ export const AUDITED_ADMIN_PROCEDURES = [
   "hackathon.removeClass",
   "hackathon.setStatusEmail",
   "hackathon.upsertPortalClient",
+  "hackathon.saveMapConfiguration",
   "hackathon.update",
   "hackathon.updateClass",
+  "hackathon.updateIssueReporting",
   "hackathon-event.checkInHacker",
   "hackathon-event.archiveTag",
   "hackathon-event.createEvent",
@@ -156,6 +159,11 @@ export const AUDITED_ADMIN_PROCEDURES = [
   "projects.dropAll",
   "projects.restore",
   "projects.update",
+  "printing.getFileDownloadUrl",
+  "printing.setAvailability",
+  "printing.setChannel",
+  "printing.setEstimateSettings",
+  "printing.setEstimatedReadyAt",
   "roles.batchAssign",
   "roles.createLink",
   "roles.syncRole",
@@ -175,6 +183,9 @@ export const HYBRID_ADMIN_PROCEDURES = [
   "forms.finalizeUpload",
   "forms.getAttachmentDownload",
   "forms.getLegacyAttachmentDownload",
+  // Saving unchanged print details writes no event.
+  "printing.updateCategory",
+  "printing.updateStatus",
 ] as const;
 
 export const EXCLUDED_ADMIN_PROCEDURES = [
@@ -212,7 +223,11 @@ export const EXCLUDED_ADMIN_PROCEDURES = [
   "discord-config.list",
   "email.getSend",
   "email.getTemplate",
+  // Reads delivery evidence and caches the review in EmailSendEvent; the
+  // actual retry decision is audited by email.retryRecipients.
+  "email.investigateSend",
   "email.listAudienceOptions",
+  "email.listRecoveryQueue",
   "email.listSends",
   "email.listTemplates",
   "email.previewTemplate",
@@ -278,6 +293,10 @@ export const EXCLUDED_ADMIN_PROCEDURES = [
   "member-admin.getAdminMember",
   "member-admin.getAdminMembers",
   "member-admin.getDuesPaymentConfiguration",
+  "printing.getConfiguration",
+  "printing.list",
+  "printing.listHackathons",
+  "printing.listDiscordChannels",
   "projects.listAdmin",
   "projects.listAdminHackathons",
   "roles.getRole",
